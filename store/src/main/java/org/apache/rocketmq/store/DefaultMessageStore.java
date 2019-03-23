@@ -423,6 +423,7 @@ public class DefaultMessageStore implements MessageStore {
             return new PutMessageResult(PutMessageStatus.SERVICE_NOT_AVAILABLE, null);
         }
 
+        //TODO：runningFlags放在broker是否更合适
         if (!this.runningFlags.isWriteable()) {
             long value = this.printTimes.getAndIncrement();
             if ((value % 50000) == 0) {
@@ -449,6 +450,7 @@ public class DefaultMessageStore implements MessageStore {
             return new PutMessageResult(PutMessageStatus.OS_PAGECACHE_BUSY, null);
         }
 
+        //执行完校验，开始写入，写入实际上是CommitLog的方法
         long beginTime = this.getSystemClock().now();
         PutMessageResult result = this.commitLog.putMessage(msg);
 
@@ -567,11 +569,13 @@ public class DefaultMessageStore implements MessageStore {
 
         final long maxOffsetPy = this.commitLog.getMaxOffset();
 
+        //获取topic和queueId对应的ConsumeQueue
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
             minOffset = consumeQueue.getMinOffsetInQueue();
             maxOffset = consumeQueue.getMaxOffsetInQueue();
 
+            //对offset进行检验，如果offset有误，进行修正
             if (maxOffset == 0) {
                 status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
                 nextBeginOffset = nextOffsetCorrection(offset, 0);
@@ -710,6 +714,7 @@ public class DefaultMessageStore implements MessageStore {
         return getResult;
     }
 
+    @Override
     public long getMaxOffsetInQueue(String topic, int queueId) {
         ConsumeQueue logic = this.findConsumeQueue(topic, queueId);
         if (logic != null) {
@@ -720,6 +725,7 @@ public class DefaultMessageStore implements MessageStore {
         return 0;
     }
 
+    @Override
     public long getMinOffsetInQueue(String topic, int queueId) {
         ConsumeQueue logic = this.findConsumeQueue(topic, queueId);
         if (logic != null) {
@@ -747,6 +753,7 @@ public class DefaultMessageStore implements MessageStore {
         return 0;
     }
 
+    @Override
     public long getOffsetInQueueByTime(String topic, int queueId, long timestamp) {
         ConsumeQueue logic = this.findConsumeQueue(topic, queueId);
         if (logic != null) {
@@ -756,6 +763,7 @@ public class DefaultMessageStore implements MessageStore {
         return 0;
     }
 
+    @Override
     public MessageExt lookMessageByOffset(long commitLogOffset) {
         SelectMappedBufferResult sbr = this.commitLog.getMessage(commitLogOffset, 4);
         if (null != sbr) {
@@ -792,6 +800,7 @@ public class DefaultMessageStore implements MessageStore {
         return this.commitLog.getMessage(commitLogOffset, msgSize);
     }
 
+    @Override
     public String getRunningDataInfo() {
         return this.storeStatsService.toString();
     }
@@ -1204,6 +1213,7 @@ public class DefaultMessageStore implements MessageStore {
                 StorePathConfigHelper.getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()),
                 this.getMessageStoreConfig().getMapedFileSizeConsumeQueue(),
                 this);
+            //TODO:为什么要再次检验，是因为可能在实例化ConsumeQueue的时候，其他线程放入了吗？？？
             ConsumeQueue oldLogic = map.putIfAbsent(queueId, newLogic);
             if (oldLogic != null) {
                 logic = oldLogic;
@@ -1217,6 +1227,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private long nextOffsetCorrection(long oldOffset, long newOffset) {
         long nextOffset = oldOffset;
+        //只能给master设置offset
         if (this.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE || this.getMessageStoreConfig().isOffsetCheckInSlave()) {
             nextOffset = newOffset;
         }

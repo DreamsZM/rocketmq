@@ -540,6 +540,7 @@ public class CommitLog {
         // on the client)
         msg.setBodyCRC(UtilAll.crc32(msg.getBody()));
         // Back to Results
+        //TODO：AppendMessageResult和PutMessageResult的适用场景分别是什么？
         AppendMessageResult result = null;
 
         StoreStatsService storeStatsService = this.defaultMessageStore.getStoreStatsService();
@@ -572,9 +573,11 @@ public class CommitLog {
 
         long eclipseTimeInLock = 0;
         MappedFile unlockMappedFile = null;
+        //和物理文件的对应，负责物理的文件的处理
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
 
         //spin or ReentrantLock ,depending on store config
+        //根据配置去实现不同的类的实例化，接口的多态。
         putMessageLock.lock();
         try {
             long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
@@ -1197,9 +1200,11 @@ public class CommitLog {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
 
             // PHY OFFSET
+            //physical offset 表示的是字节数的偏移量。 position()方法返回的是字节偏移
             long wroteOffset = fileFromOffset + byteBuffer.position();
 
             this.resetByteBuffer(hostHolder, 8);
+            //消息ID是全局惟一的，16字节：IP（4）+ port（4）+ offset（8）
             String msgId = MessageDecoder.createMessageId(this.msgIdMemory, msgInner.getStoreHostBytes(hostHolder), wroteOffset);
 
             // Record ConsumeQueue information
@@ -1208,6 +1213,7 @@ public class CommitLog {
             keyBuilder.append('-');
             keyBuilder.append(msgInner.getQueueId());
             String key = keyBuilder.toString();
+            //该消息在消息队列的偏移量
             Long queueOffset = CommitLog.this.topicQueueTable.get(key);
             if (null == queueOffset) {
                 queueOffset = 0L;
@@ -1257,6 +1263,7 @@ public class CommitLog {
             }
 
             // Determines whether there is sufficient free space
+            //TODO：文件不一定会全部写满，如果剩余的文件空间不能容纳整条消息，就会写入剩余的空间和魔数
             if ((msgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
                 this.resetByteBuffer(this.msgStoreItemMemory, maxBlank);
                 // 1 TOTALSIZE
@@ -1266,6 +1273,7 @@ public class CommitLog {
                 // 3 The remaining space may be any value
                 // Here the length of the specially set maxBlank
                 final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
+                //这里开始写入ByteBuffer
                 byteBuffer.put(this.msgStoreItemMemory.array(), 0, maxBlank);
                 return new AppendMessageResult(AppendMessageStatus.END_OF_FILE, wroteOffset, maxBlank, msgId, msgInner.getStoreTimestamp(),
                     queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);

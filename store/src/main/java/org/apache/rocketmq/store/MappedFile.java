@@ -242,7 +242,9 @@ public class MappedFile extends ReferenceResource {
 
         int currentPos = this.wrotePosition.get();
 
+        //文件大小是定长的，默认为1G，因此wrotePosition的范围是0-（1G-1）
         if (currentPos < this.fileSize) {
+            //TODO：为什么要复制一份进行操作呢？？？
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             byteBuffer.position(currentPos);
             AppendMessageResult result = null;
@@ -253,7 +255,9 @@ public class MappedFile extends ReferenceResource {
             } else {
                 return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
             }
+            //更新写指针的位置
             this.wrotePosition.addAndGet(result.getWroteBytes());
+            //记录存储时间
             this.storeTimestamp = result.getStoreTimestamp();
             return result;
         }

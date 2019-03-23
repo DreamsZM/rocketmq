@@ -277,11 +277,13 @@ public class MappedFileQueue {
     public MappedFile getLastMappedFile() {
         MappedFile mappedFileLast = null;
 
+        //TODO:通过while和try配合实现容错。
         while (!this.mappedFiles.isEmpty()) {
             try {
                 mappedFileLast = this.mappedFiles.get(this.mappedFiles.size() - 1);
                 break;
             } catch (IndexOutOfBoundsException e) {
+                //TODO：容错实现
                 //continue;
             } catch (Exception e) {
                 log.error("getLastMappedFile has exception.", e);
