@@ -46,12 +46,12 @@ public class MappedFile extends ReferenceResource {
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
     /**
-     * 当前JVM实例中Map普洱的File虚拟内存
+     * 当前JVM实例中MappedFile虚拟内存
      */
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
 
     /**
-     * 当前JVM实例中Map普洱的File对象个数
+     * 当前JVM实例中MappedFile的File对象个数
      */
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
 
@@ -136,6 +136,7 @@ public class MappedFile extends ReferenceResource {
         return AccessController.doPrivileged(new PrivilegedAction<Object>() {
             public Object run() {
                 try {
+                    //通过反射调用方法
                     Method method = method(target, methodName, args);
                     method.setAccessible(true);
                     return method.invoke(target);
@@ -365,17 +366,26 @@ public class MappedFile extends ReferenceResource {
         return this.committedPosition.get();
     }
 
+    /**
+     * 具体的提交实现，可以被子类重写
+     * ByteBuffer的内容提交到FileChannel中
+     * @param commitLeastPages
+     */
     protected void commit0(final int commitLeastPages) {
         int writePos = this.wrotePosition.get();
         int lastCommittedPosition = this.committedPosition.get();
 
         if (writePos - this.committedPosition.get() > 0) {
             try {
+                //slice()返回的ByteBuffer，共享原对象的内存，但是维护单独的指针(position、mark、limit)
                 ByteBuffer byteBuffer = writeBuffer.slice();
                 byteBuffer.position(lastCommittedPosition);
                 byteBuffer.limit(writePos);
+
                 this.fileChannel.position(lastCommittedPosition);
                 this.fileChannel.write(byteBuffer);
+
+                //更新提交的指针位置
                 this.committedPosition.set(writePos);
             } catch (Throwable e) {
                 log.error("Error occurred when commit data to FileChannel.", e);
@@ -398,6 +408,13 @@ public class MappedFile extends ReferenceResource {
         return write > flush;
     }
 
+    /**
+     * 文件写满就提交
+     * TODO：为什么protected？可以继续，子类重写该方法
+     * 设置了最小提交页时，满足条件才能提交。否则，存在没有提交的数据就进行提交
+     * @param commitLeastPages
+     * @return
+     */
     protected boolean isAbleToCommit(final int commitLeastPages) {
         int flush = this.committedPosition.get();
         int write = this.wrotePosition.get();
@@ -447,6 +464,11 @@ public class MappedFile extends ReferenceResource {
         return null;
     }
 
+    /**
+     * 查找pos到当前最大可读之间的数据
+     * @param pos
+     * @return
+     */
     public SelectMappedBufferResult selectMappedBuffer(int pos) {
         int readPosition = getReadPosition();
         if (pos < readPosition && pos >= 0) {
@@ -454,6 +476,7 @@ public class MappedFile extends ReferenceResource {
                 ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
                 byteBuffer.position(pos);
                 int size = readPosition - pos;
+
                 ByteBuffer byteBufferNew = byteBuffer.slice();
                 byteBufferNew.limit(size);
                 return new SelectMappedBufferResult(this.fileFromOffset + pos, byteBufferNew, size, this);
@@ -597,6 +620,7 @@ public class MappedFile extends ReferenceResource {
         final long beginTime = System.currentTimeMillis();
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
         Pointer pointer = new Pointer(address);
+        //TODO：为什么要加大括号
         {
             int ret = LibC.INSTANCE.mlock(pointer, new NativeLong(this.fileSize));
             log.info("mlock {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);

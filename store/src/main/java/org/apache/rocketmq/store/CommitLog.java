@@ -55,12 +55,23 @@ public class CommitLog {
     //If TransientStorePool enabled, we must flush message to FileChannel at fixed periods
     private final FlushCommitLogService commitLogService;
 
+    /**
+     * 回调接口
+     */
     private final AppendMessageCallback appendMessageCallback;
+    //TODO:解决线程安全。
     private final ThreadLocal<MessageExtBatchEncoder> batchEncoderThreadLocal;
+    /**
+     * topic-queueId 的offset缓存
+     */
     protected HashMap<String/* topic-queueid */, Long/* offset */> topicQueueTable = new HashMap<String, Long>(1024);
     protected volatile long confirmOffset = -1L;
 
     private volatile long beginTimeInLock = 0;
+
+    /**
+     * 锁接口，根据配置文件进行实例化
+     */
     protected final PutMessageLock putMessageLock;
 
     public CommitLog(final DefaultMessageStore defaultMessageStore) {

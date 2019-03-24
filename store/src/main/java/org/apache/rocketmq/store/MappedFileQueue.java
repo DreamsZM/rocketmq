@@ -277,7 +277,7 @@ public class MappedFileQueue {
     public MappedFile getLastMappedFile() {
         MappedFile mappedFileLast = null;
 
-        //TODO:通过while和try配合实现容错。
+        //TODO:通过while和try配合实现容错。最后一个会存在，但是第一个不一定存在，可能已经被删除，因此使用if语句只进行单次的容错处理
         while (!this.mappedFiles.isEmpty()) {
             try {
                 mappedFileLast = this.mappedFiles.get(this.mappedFiles.size() - 1);
@@ -497,13 +497,13 @@ public class MappedFileQueue {
      * @param offset Offset.
      * @param returnFirstOnNotFound If the mapped file is not found, then return the first one.
      * @return Mapped file or null (when not found and returnFirstOnNotFound is <code>false</code>).
-     */
-    public MappedFile findMappedFileByOffset(final long offset, final boolean returnFirstOnNotFound) {
+      */
+     public MappedFile findMappedFileByOffset(final long offset, final boolean returnFirstOnNotFound) {
         try {
             MappedFile firstMappedFile = this.getFirstMappedFile();
             MappedFile lastMappedFile = this.getLastMappedFile();
             if (firstMappedFile != null && lastMappedFile != null) {
-                //offset有误
+                //offset有误，mapFileSize的值是固定的
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
                     LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}",
                         offset,
@@ -512,12 +512,13 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
-                    //
+                    //正常情况
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {
                         targetFile = this.mappedFiles.get(index);
                     } catch (Exception ignored) {
+                        //TODO:为什么要忽略呢？？？
                     }
 
                     if (targetFile != null && offset >= targetFile.getFileFromOffset()
@@ -525,6 +526,7 @@ public class MappedFileQueue {
                         return targetFile;
                     }
 
+                    //TODO：上面的if语句块已经能获取到了，这个是为什么防止什么情况的
                     for (MappedFile tmpMappedFile : this.mappedFiles) {
                         if (offset >= tmpMappedFile.getFileFromOffset()
                             && offset < tmpMappedFile.getFileFromOffset() + this.mappedFileSize) {

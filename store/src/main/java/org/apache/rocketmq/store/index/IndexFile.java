@@ -118,6 +118,8 @@ public class IndexFile {
                     timeDiff = 0;
                 }
 
+                //*** 重要 ***
+                //新添加条目的的起始物理偏移量
                 int absIndexPos =
                     IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
                         + this.indexHeader.getIndexCount() * indexSize;
@@ -208,6 +210,7 @@ public class IndexFile {
 
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()
                     || this.indexHeader.getIndexCount() <= 1) {
+
                 } else {
                     for (int nextIndexToRead = slotValue; ; ) {
                         if (phyOffsets.size() >= maxNum) {
