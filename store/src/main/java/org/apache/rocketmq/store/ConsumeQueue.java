@@ -154,6 +154,11 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 通过time获取offset
+     * @param timestamp
+     * @return
+     */
     public long getOffsetInQueueByTime(final long timestamp) {
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
@@ -223,6 +228,10 @@ public class ConsumeQueue {
         return 0;
     }
 
+    /**
+     *
+     * @param phyOffet
+     */
     public void truncateDirtyLogicFiles(long phyOffet) {
 
         int logicFileSize = this.mappedFileSize;
@@ -293,6 +302,10 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 获取最新的offset
+     * @return
+     */
     public long getLastOffset() {
         long lastOffset = -1;
 

@@ -29,13 +29,26 @@ import org.apache.rocketmq.store.MappedFile;
 
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
+    /**
+     * 一个hashSlot占4个字节
+     */
     private static int hashSlotSize = 4;
+    /**
+     * 一个index占20个字节
+     */
     private static int indexSize = 20;
     private static int invalidIndex = 0;
+    /**
+     * hashSlot的数量
+     */
     private final int hashSlotNum;
+    /**
+     * index的最大数量
+     */
     private final int indexNum;
     private final MappedFile mappedFile;
     private final FileChannel fileChannel;
+
     private final MappedByteBuffer mappedByteBuffer;
     private final IndexHeader indexHeader;
 
@@ -43,13 +56,16 @@ public class IndexFile {
         final long endPhyOffset, final long endTimestamp) throws IOException {
         int fileTotalSize =
             IndexHeader.INDEX_HEADER_SIZE + (hashSlotNum * hashSlotSize) + (indexNum * indexSize);
+        //实例化对应的物理文件
         this.mappedFile = new MappedFile(fileName, fileTotalSize);
         this.fileChannel = this.mappedFile.getFileChannel();
+        //从物理文件中获取内存映射对象
         this.mappedByteBuffer = this.mappedFile.getMappedByteBuffer();
         this.hashSlotNum = hashSlotNum;
         this.indexNum = indexNum;
 
         ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
+        //将内存映射对象复制一份给IndexHeader对象
         this.indexHeader = new IndexHeader(byteBuffer);
 
         if (endPhyOffset > 0) {
@@ -89,10 +105,20 @@ public class IndexFile {
         return this.mappedFile.destroy(intervalForcibly);
     }
 
+    /**
+     * 消息的key和physical offset
+     * @param key
+     * @param phyOffset
+     * @param storeTimestamp
+     * @return
+     */
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
         if (this.indexHeader.getIndexCount() < this.indexNum) {
+            //计算key的hashcode
             int keyHash = indexKeyHashMethod(key);
+            //计算hash槽的位置
             int slotPos = keyHash % this.hashSlotNum;
+            //计算该hash槽的物理位置
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
 
             FileLock fileLock = null;
@@ -129,13 +155,17 @@ public class IndexFile {
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8, (int) timeDiff);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);
 
+                //Index是顺序添加的
                 this.mappedByteBuffer.putInt(absSlotPos, this.indexHeader.getIndexCount());
 
+                //更新IndexHeader的信息,一共六条信息，long型变量占8个字节，int型变量占4个字节
                 if (this.indexHeader.getIndexCount() <= 1) {
+                    //当写入第一条消息时，则添加physical offset 和 begin timestamp
                     this.indexHeader.setBeginPhyOffset(phyOffset);
                     this.indexHeader.setBeginTimestamp(storeTimestamp);
                 }
 
+                //
                 this.indexHeader.incHashSlotCount();
                 this.indexHeader.incIndexCount();
                 this.indexHeader.setEndPhyOffset(phyOffset);
@@ -188,20 +218,37 @@ public class IndexFile {
         return result;
     }
 
+    /**
+     * 根据key查找消息
+     * 一个key可以对应多条消息
+     * TODO:为什么要把返回结果作为入参呢？ lock没有实现
+     * @param phyOffsets 查找结果
+     * @param key
+     * @param maxNum 此次查询返回的条数
+     * @param begin 开始的时间
+     * @param end 结束的时间
+     * @param lock 是否加锁
+     */
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
         final long begin, final long end, boolean lock) {
         if (this.mappedFile.hold()) {
+            //计算key的哈希值
             int keyHash = indexKeyHashMethod(key);
+            //获取hash槽的下标，hash槽的个数是确定的，可以取余进行计算
             int slotPos = keyHash % this.hashSlotNum;
+            //计算hash槽的物理位置
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
 
+            //TODO:没有实例化
             FileLock fileLock = null;
             try {
+                //TODO:这是在弄什么？？？查询为什么要加锁呢？保证查询信息的准确性吗
                 if (lock) {
                     // fileLock = this.fileChannel.lock(absSlotPos,
                     // hashSlotSize, true);
                 }
 
+                //索引条目的下标，IndexFile是定长的，通过物理位置可以得到该处储存的数据
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
                 // if (fileLock != null) {
                 // fileLock.release();
@@ -217,14 +264,17 @@ public class IndexFile {
                             break;
                         }
 
+                        //物理偏移量，索引条目是一条一条的写，但是哈希槽已经申请好，放在那里了
                         int absIndexPos =
                             IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
                                 + nextIndexToRead * indexSize;
 
+                        //索引条目中存放着消息key的hashcode
                         int keyHashRead = this.mappedByteBuffer.getInt(absIndexPos);
                         long phyOffsetRead = this.mappedByteBuffer.getLong(absIndexPos + 4);
 
                         long timeDiff = (long) this.mappedByteBuffer.getInt(absIndexPos + 4 + 8);
+                        //前一条的索引位置
                         int prevIndexRead = this.mappedByteBuffer.getInt(absIndexPos + 4 + 8 + 4);
 
                         if (timeDiff < 0) {
@@ -236,6 +286,7 @@ public class IndexFile {
                         long timeRead = this.indexHeader.getBeginTimestamp() + timeDiff;
                         boolean timeMatched = (timeRead >= begin) && (timeRead <= end);
 
+                        //Index条目里存储的是key的哈希值
                         if (keyHash == keyHashRead && timeMatched) {
                             phyOffsets.add(phyOffsetRead);
                         }
